@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SafeRoute Naija</title>
+<meta name="description" content="Safety, security and road-hazard warnings for travellers and drivers in Nigeria.">
+<meta name="theme-color" content="#0d1412">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <img src="/icons/icon-192.png" alt="" width="28" height="28">
+      <span>SafeRoute Naija</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="tabs" id="tabs"></div>
+    <button class="btn sm" id="btnAccount">Sign in</button>
+  </header>
+  <div class="body">
+    <div id="mapwrap">
+      <div id="map"></div>
+      <div class="ov" id="pill"><span class="dot"></span><div><b id="pillLvl">Checking…</b><small id="pillWhere">Waiting for your location</small></div></div>
+      <div class="ov" id="clock"><span id="clockT">--:--</span><small id="clockD"></small></div>
+      <div class="ov" id="hint"></div>
+      <div class="ov" id="offline">Offline — showing saved data</div>
+      <div class="ov" id="caption"><span class="spk">🔊</span><div id="captionT"></div></div>
+      <div class="ov" id="mapctl">
+        <button id="btnLayer" title="Switch satellite / street map" aria-label="Switch map type">🛰️</button>
+        <button id="btnFollow" title="Centre on me" aria-label="Centre on me">🎯</button>
+      </div>
+      <button class="ov" id="sos" title="SOS" aria-label="SOS emergency">SOS</button>
+      <div id="driver">
+        <div>
+          <div class="big" id="dLvl">—</div>
+          <div class="sub" id="dWhere">—</div>
+          <div class="next" id="dNext">No hazards ahead</div>
+        </div>
+        <div>
+          <div class="grid">
+            <div><b id="dSpeed">0</b><span>km/h</span></div>
+            <div><b id="dPost">—</b><span>to security post</span></div>
+            <div><b id="dHosp">—</b><span>to hospital</span></div>
+          </div>
+          <div class="row" style="margin-top:14px;gap:10px">
+            <button class="btn block big-btn" id="dReport">📣 Quick report</button>
+            <button class="btn block big-btn" id="dExit">Exit Driver Mode</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside id="panel"></aside>
+  </div>
+</div>
+<div id="modal"><div class="box" id="modalBox"></div></div>
+<div id="toast"></div>
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/js/risk.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
