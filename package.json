@@ -17,5 +17,8 @@
     "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
     "multer": "^2.5.0"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true
   }
 }
