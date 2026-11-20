@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SafeRoute Command Centre</title>
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/css/admin.css">
+</head>
+<body>
+<div id="gate" class="gate" hidden></div>
+<div id="shell" class="shell" hidden>
+  <aside class="side">
+    <div class="brand"><img src="/icons/icon-192.png" alt="" width="30" height="30"><div><b>SafeRoute</b><span>Command Centre</span></div></div>
+    <nav id="nav"></nav>
+    <div class="side-foot"><div id="who" class="who"></div><a href="/" class="lnk">← Back to the app</a></div>
+  </aside>
+  <main class="main">
+    <header class="top">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="top-right">
+        <select id="period" aria-label="Period"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="180">Last 6 months</option><option value="365">Last 12 months</option></select>
+        <button class="btn" id="refresh" title="Refresh">↻</button>
+        <span class="clock" id="clock"></span>
+      </div>
+    </header>
+    <div class="layers-note" id="layersNote"></div>
+    <section id="view" class="view"></section>
+  </main>
+  <aside id="drawer" class="drawer" hidden></aside>
+</div>
+<div id="modal" class="modal" hidden><div class="box" id="modalBox"></div></div>
+<div id="toast" class="toast" hidden></div>
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>SafeRoute — shared location</title>
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<style>
+  html,body{margin:0;height:100%;background:#0d1412;color:#e8f0ec;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{display:grid;grid-template-rows:auto 1fr;height:100vh;height:100dvh}
+  header{padding:12px 14px;background:#131d1a;border-bottom:1px solid #26362f}
+  h1{margin:0;font-size:17px}
+  .sub{color:#93a69d;font-size:13px;margin-top:3px}
+  .banner{margin-top:8px;padding:10px 12px;border-radius:10px;font-weight:700;font-size:14px}
+  .b-sos{background:#450a0a;border:1px solid #991b1b}
+  .b-duress{background:#3a2d0b;border:1px solid #b45309;color:#fde68a}
+  .b-ok{background:#0f2d1c;border:1px solid #166534}
+  .b-end{background:#1e293b;border:1px solid #334155}
+  #map{height:100%}
+  .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  .btn{display:inline-block;padding:9px 14px;border-radius:9px;background:#1a2723;border:1px solid #26362f;color:#e8f0ec;text-decoration:none;font-weight:700;font-size:14px}
+  .btn.red{background:#b91c1c;border-color:#dc2626}
+  ul{margin:8px 0 0;padding:0;list-style:none;font-size:13px}
+  li{padding:2px 0}
+  li span{color:#93a69d;margin-right:6px}
+  .me{width:22px;height:22px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 0 0 8px rgba(239,68,68,.25)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header id="hdr"><h1>Loading shared location…</h1></header>
+  <div id="map"></div>
+</div>
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/js/track.js"></script>
+</body>
+</html>

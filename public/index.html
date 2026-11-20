@@ -21,8 +21,10 @@
     </div>
     <div class="spacer"></div>
     <div class="tabs" id="tabs"></div>
+    <button class="btn sm bell" id="btnBell" aria-label="Alerts">🔔<span id="bellBadge" class="badge" style="display:none"></span></button>
     <button class="btn sm" id="btnAccount">Sign in</button>
   </header>
+  <div id="notice" class="notice" role="status" hidden></div>
   <div class="body">
     <div id="mapwrap">
       <div id="map"></div>
@@ -30,12 +32,18 @@
       <div class="ov" id="clock"><span id="clockT">--:--</span><small id="clockD"></small></div>
       <div class="ov" id="hint"></div>
       <div class="ov" id="offline">Offline — showing saved data</div>
+      <div class="ov" id="heatbar" style="display:none"><div class="row between"><b>Incident heatmap</b><button class="linkish" id="hClose">✕</button></div>
+        <div class="row" style="gap:6px;margin-top:6px"><select id="hCat"><option value="security">Security incidents</option><option value="road">Road hazards</option><option value="all">All</option><option value="robbery">Armed robbery</option><option value="kidnap">Kidnapping</option><option value="accident">Road accidents</option><option value="flood">Flooding</option></select>
+        <select id="hDays"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">1 year</option></select>
+        <select id="hTod"><option value="all">Any time</option><option value="day">Daytime</option><option value="night">Night</option></select></div>
+        <div class="small" id="heatInfo" style="margin-top:6px"></div></div>
       <div class="ov" id="caption"><span class="spk">🔊</span><div id="captionT"></div></div>
       <div class="ov" id="mapctl">
         <button id="btnLayer" title="Switch satellite / street map" aria-label="Switch map type">🛰️</button>
         <button id="btnFollow" title="Centre on me" aria-label="Centre on me">🎯</button>
+        <button id="btnHeat" title="Incident heatmap" aria-label="Incident heatmap">🔥</button>
       </div>
-      <button class="ov" id="sos" title="SOS" aria-label="SOS emergency">SOS</button>
+      <button class="ov" id="sos" title="Emergency SOS — opens with safeguards" aria-label="Emergency SOS">SOS</button>
       <div id="driver">
         <div>
           <div class="big" id="dLvl">—</div>
@@ -57,10 +65,12 @@
     </div>
     <aside id="panel"></aside>
   </div>
+  <nav id="bnav" aria-label="Sections"></nav>
 </div>
 <div id="modal"><div class="box" id="modalBox"></div></div>
 <div id="toast"></div>
 <script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/vendor/qrcode/qrcode.js"></script>
 <script src="/js/risk.js"></script>
 <script src="/js/app.js"></script>
 </body>
