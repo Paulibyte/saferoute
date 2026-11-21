@@ -10,6 +10,7 @@ const dur = min => min == null ? '—' : min < 60 ? Math.round(min) + ' min' : (
 const LAYERS = { community: { label: 'Community reports', short: 'Community', color: '#94a3b8', note: 'unverified — not confirmed' }, verified: { label: 'Verified incidents', short: 'Verified', color: '#f59e0b', note: 'verified by SafeRoute moderators' }, official: { label: 'Official agency records', short: 'Official', color: '#3b82f6', note: 'recorded by verified security agencies' } };
 const STATUS = { unverified: 'Unverified', investigating: 'Under investigation', verified: 'Verified', resolved: 'Resolved / expired', rejected: 'Rejected' };
 const CATS = { police: '👮 Police', frsc: '🦺 FRSC', military: '🪖 Military', nscdc: '🛡️ NSCDC', community: '🤝 Community security', sema: '🆘 SEMA', fire: '🚒 Fire service', ambulance: '🚑 Ambulance', hospital: '🏥 Hospital', clinic: '⚕️ Clinic', mechanic: '🔧 Mechanic', vulcaniser: '🛞 Vulcaniser', fuel: '⛽ Fuel' };
+const ZONE_T = { urban: 'Urban', peri: 'Peri-urban', rural: 'Rural', forest: 'Forest / isolated stretch' };
 const SOS_TYPES = { attack: 'Attack or robbery', kidnap: 'Kidnapping', accident: 'Road accident', medical: 'Medical emergency', fire: 'Fire', other: 'Emergency' };
 
 const D = { me: null, types: {}, settings: {}, state: '', lga: 0, lgaName: '', days: 30, mod: 'overview', map: null, timers: [], cache: {}, sound: false, seenSos: new Set() };
@@ -577,6 +578,9 @@ async function vConfig(v) {
       <td style="white-space:nowrap"><input type="text" data-tw="${t.key}" value="${t.weight}" style="width:50px"> <input type="text" data-tr="${t.key}" value="${t.radius_km}" style="width:46px"> <input type="text" data-tt="${t.key}" value="${t.ttl_hours}" style="width:58px"> <input type="text" data-th="${t.key}" value="${t.half_life_h}" style="width:58px"></td></tr>`).join('')}</table></div>
       <button class="btn primary" id="saveTypes" style="margin-top:8px">Save categories</button></div>
   </div>
+  <div class="card" style="margin-top:14px"><div class="row between"><div><h2>Area types (settlement)</h2><p class="small" style="margin:0">Urban, peri-urban, rural or forest / isolated stretch. Adds an isolation factor that rises after dark. The smallest area containing a point wins; anywhere not covered counts as rural.</p></div></div>
+    <div class="grid g-map" style="margin-top:10px"><div><div id="zMap" class="map" style="height:360px"></div><div class="small">Click the map to add an area.</div></div>
+    <div class="tablewrap" style="max-height:380px"><table><thead><tr><th>Area</th><th>Type</th><th class="n">Radius</th><th></th></tr></thead><tbody>${(bs.zones || []).map(z => `<tr><td>${esc(z.name)}</td><td>${esc(ZONE_T[z.type] || z.type)}</td><td class="n">${z.radius_km} km</td><td><button class="btn sm" data-zdel="${z.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty">No areas yet.</td></tr>'}</tbody></table></div></div></div>
   <div class="card" style="margin-top:14px"><div class="row between"><h2>Audit log</h2><div class="row"><input type="text" id="auQ" placeholder="Filter by action or person"><button class="btn" id="auGo">Filter</button></div></div><div class="tablewrap" id="auList" style="max-height:420px">Loading…</div></div>`;
   const save = async (body, msg) => { try { await api('/api/settings', { method: 'PUT', body }); toast(msg); const bs2 = await api('/api/bootstrap'); D.settings = bs2.settings; } catch (e) { toast(e.message); } };
   $('#saveOps').onclick = () => save({ community_alerts_enabled: $('[data-sw=community_alerts_enabled]').checked ? '1' : '0', public_reporting_enabled: $('[data-sw=public_reporting_enabled]').checked ? '1' : '0', notice_text: $('#notice').value }, 'Controls saved');
@@ -587,6 +591,18 @@ async function vConfig(v) {
   };
   const loadAudit = async () => { const list = await api('/api/dash/audit?q=' + encodeURIComponent($('#auQ').value)); $('#auList').innerHTML = `<table><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>${list.map(a => `<tr><td>${when(a.at)}</td><td>${esc(a.name || '—')}<div class="small">${esc(a.role || '')} · ${esc(a.ip || '')}</div></td><td>${esc(a.action.replace(/_/g, ' '))}</td><td>${esc(a.target_type || '')} ${a.target_id ?? ''}</td><td class="small" style="max-width:360px;overflow-wrap:anywhere">${esc(a.detail || '')}</td></tr>`).join('')}</tbody></table>`; };
   $('#auGo').onclick = loadAudit; loadAudit();
+  const zm = newMap('zMap'); const zc = { urban: '#3b82f6', peri: '#22c55e', rural: '#f59e0b', forest: '#a855f7' }; const zpts = [];
+  (bs.zones || []).forEach(z => { zpts.push([z.lat, z.lng]); L.circle([z.lat, z.lng], { radius: z.radius_km * 1000, color: zc[z.type], weight: 1.5, fillOpacity: .15 }).bindTooltip(`${esc(z.name)} · ${ZONE_T[z.type]}`).addTo(zm); });
+  if (zpts.length) zm.fitBounds(L.latLngBounds(zpts).pad(.3), { maxZoom: 11 });
+  zm.on('click', e => {
+    const p = [e.latlng.lat, e.latlng.lng];
+    modal(`<h2>Add an area type</h2><p class="small">Centre ${p[0].toFixed(4)}, ${p[1].toFixed(4)}</p><form id="zF"><label>Name<br><input type="text" name="name" required maxlength="80" style="width:100%" placeholder="e.g. Owerri municipal"></label>
+      <label>Type<br><select name="type" style="width:100%">${Object.entries(ZONE_T).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+      <label>Radius (km, up to 50)<br><input type="text" name="radius_km" value="3" style="width:100%"></label>
+      <div class="row between" style="margin-top:12px"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div></form>`);
+    $('#zF').onsubmit = async ev => { ev.preventDefault(); try { await api('/api/zones', { method: 'POST', body: { ...Object.fromEntries(new FormData(ev.target)), lat: p[0], lng: p[1] } }); closeModal(); toast('Area saved'); render(); } catch (x) { toast(x.message); } };
+  });
+  $$('[data-zdel]').forEach(b => b.onclick = async () => { try { await api('/api/zones/' + b.dataset.zdel, { method: 'DELETE' }); toast('Area deleted'); render(); } catch (x) { toast(x.message); } });
 }
 
 // ---------------- render ----------------
