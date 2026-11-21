@@ -1,5 +1,5 @@
 // SafeRoute service worker: app works offline with the last data it saw, and keeps recently viewed map tiles.
-const VERSION = 'sr-v4';
+const VERSION = 'sr-v4.1';
 const SHELL = ['/', '/css/app.css', '/js/app.js', '/js/risk.js', '/vendor/qrcode/qrcode.js', '/vendor/leaflet/leaflet.js', '/vendor/leaflet/leaflet.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 const MAX_TILES = 1500;
 

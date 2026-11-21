@@ -1,6 +1,6 @@
 {
   "name": "saferoute-naija",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "SafeRoute Naija — safety, security and road-hazard geo app with a built-in SQLite database",
   "main": "server.js",
   "private": true,

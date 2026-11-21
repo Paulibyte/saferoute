@@ -119,3 +119,17 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .warnbox{background:#2a1f08;border:1px solid #6b5313;color:#fde68a;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:12px}
 @media (max-width:1100px){.g4,.g6{grid-template-columns:repeat(2,1fr)}.g-map,.g2,.g3{grid-template-columns:1fr}}
 @media (max-width:760px){.shell{grid-template-columns:1fr}.side{position:fixed;bottom:0;left:0;right:0;z-index:1000;height:auto;flex-direction:row;border-right:0;border-top:1px solid var(--line)}.brand,.side-foot{display:none}nav{display:flex;overflow-x:auto;padding:4px}nav button{flex:none;width:auto;flex-direction:column;gap:2px;font-size:10.5px;padding:6px 8px}.view{padding-bottom:90px}}
+
+.guide{display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start}
+#gToc{display:grid;gap:2px}
+#gToc button{text-align:left;background:none;border:0;color:var(--mute);padding:8px 10px;border-radius:8px;cursor:pointer;font:inherit;font-size:13.5px}
+#gToc button:hover{background:rgba(255,255,255,.04);color:var(--ink)}
+#gToc button.on{background:rgba(34,197,94,.12);color:var(--ink);font-weight:600}
+.gbody{line-height:1.6;max-width:880px}
+.gbody h3{font-size:15px;margin:18px 0 6px;color:var(--ink)}
+.gbody table{margin:8px 0}
+.gbody td,.gbody th{vertical-align:top}
+.gbody li{margin:4px 0}
+.gbody pre{background:#0a110e;border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;font-size:12.5px;white-space:pre}
+.gbody code{background:#0a110e;padding:1px 5px;border-radius:4px;font-size:12.5px}
+@media (max-width:860px){.guide{grid-template-columns:1fr}}

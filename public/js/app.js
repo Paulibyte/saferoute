@@ -582,7 +582,7 @@ function fleetBadge() { return (S.fleet && S.fleet.alerts || []).filter(a => !a.
 function renderTabs() {
   if (LEGACY_TAB[S.tab]) S.tab = LEGACY_TAB[S.tab];
   const list = sectionList();
-  if (!list.find(t => t[0] === S.tab)) S.tab = 'map';
+  if (S.tab !== 'howto' && !list.find(t => t[0] === S.tab)) S.tab = 'map';
   const badge = k => k === 'alerts' ? S.unread : k === 'fleet' ? fleetBadge() : k === 'sos' && S.sos ? '!' : 0;
   $('#tabs').innerHTML = list.map(([k, ic, l]) => { const n = badge(k); return `<button data-tab="${k}" class="${S.tab === k ? 'on' : ''}${k === 'sos' ? ' t-sos' : ''}"><i>${ic}</i>${l}${n ? `<span class="badge">${n > 9 ? '9+' : n}</span>` : ''}</button>`; }).join('');
   const more = !['map', 'journey', 'alerts', 'circle'].includes(S.tab);
@@ -596,7 +596,8 @@ function renderTabs() {
 function moreSheet() {
   const list = sectionList().filter(t => !['map', 'journey', 'alerts', 'circle'].includes(t[0]));
   modal(`<h2>More</h2><div class="morelist">${list.map(([k, ic, l]) => `<button class="btn block" data-more="${k}"><i>${ic}</i> ${l}</button>`).join('')}
-    ${isStaffUser() ? '<a class="btn block" href="/admin"><i>🛡️</i> Command Centre</a>' : ''}</div><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>Close</button></div>`);
+    <button class="btn block" data-more="howto"><i>❓</i> How SafeRoute works</button>
+    ${isStaffUser() ? '<a class="btn block" href="/admin"><i>🛡️</i> Command Centre</a><a class="btn block" href="/admin#guide"><i>📘</i> Staff guide</a>' : ''}</div><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>Close</button></div>`);
   $$('[data-more]').forEach(b => b.onclick = () => { closeModal(); setTab(b.dataset.more); });
 }
 const isStaffUser = () => S.user && (isMod() || isSecurity() || ['security', 'moderator', 'admin'].includes(S.user.real_role || S.user.role));
@@ -1013,8 +1014,8 @@ function adminPanel() {
 }
 function renderPanel() {
   const p = $('#panel');
-  const V = { services: helpPanel, fleet: fleetPanel, journey: journeyPanel, circle: circlePanel, alerts: alertsPanel, sos: sosPanel, watch: watchPanel, account: accountPanel };
-  p.innerHTML = `<div class="phead"><h2>${(sectionList().find(t => t[0] === S.tab) || SECTIONS[0]).slice(1).join(' ')}</h2></div>` + (V[S.tab] || mapPanel)();
+  const V = { howto: howtoPanel, services: helpPanel, fleet: fleetPanel, journey: journeyPanel, circle: circlePanel, alerts: alertsPanel, sos: sosPanel, watch: watchPanel, account: accountPanel };
+  p.innerHTML = `<div class="phead"><h2>${S.tab === 'howto' ? '❓ How SafeRoute works' : (sectionList().find(t => t[0] === S.tab) || SECTIONS[0]).slice(1).join(' ')}</h2></div>` + (V[S.tab] || mapPanel)();
   bindPanel(); bindV4($('#panel')); update();
 }
 function bindPanel() {
@@ -1967,7 +1968,8 @@ function watchPanel() {
 function accountPanel() {
   const u = S.user;
   if (!u) return `<div class="sec"><p>Sign in to use Safe Circle, SOS, journey check-in, alerts and reporting.</p><button class="btn primary block" id="aSign">Sign in or create account</button></div>
-    <div class="sec small">You can still use the Safety Map, Journey Planner and Emergency Services without an account.</div>`;
+    <div class="sec small">You can still use the Safety Map, Journey Planner and Emergency Services without an account.</div>
+    <div class="sec"><button class="btn block" data-goto="howto">❓ How SafeRoute works</button></div>`;
   const p = S.alertPrefs;
   return `<div class="sec"><h3>Profile</h3><form id="profF"><label class="f">Name</label><input type="text" name="name" maxlength="80" value="${esc(u.name)}" required>
     <label class="f">Phone</label><input type="text" name="phone" maxlength="30" inputmode="tel" value="${esc(u.phone || '')}" placeholder="0803…">
@@ -1975,7 +1977,7 @@ function accountPanel() {
     <button class="btn block" style="margin-top:8px">Save profile</button></form>
     <p class="small">Account type: <b style="color:var(--ink)">${esc(u.real_role || u.role)}</b>${u.org ? ' · ' + esc(u.org.name) + (u.org_role ? ' (' + esc(u.org_role) + ')' : '') : ''}${u.security_status ? ' · security status: ' + esc(u.security_status) : ''}</p>
     ${u.security_status === 'pending' ? '<p class="small">An admin or your agency supervisor will verify your security account.</p>' : ''}</div>
-  ${isStaffUser() ? `<div class="sec"><h3>Staff</h3><p class="small" style="margin-top:0">Moderation, SOS response, intelligence and administration are in the Command Centre.</p><a class="btn primary block" href="/admin">🛡️ Open the Command Centre</a></div>` : ''}
+  ${isStaffUser() ? `<div class="sec"><h3>Staff</h3><p class="small" style="margin-top:0">Moderation, SOS response, intelligence and administration are in the Command Centre.</p><a class="btn primary block" href="/admin">🛡️ Open the Command Centre</a><a class="btn block" href="/admin#guide" style="margin-top:6px">📘 Staff guide</a></div>` : ''}
   <div class="sec"><h3>Notifications</h3>
     <button class="btn block" id="cPush">${S.pushOn ? '✅ App notifications on — send a test' : '🔔 Turn on app notifications'}</button>
     <button class="btn block" data-goto="alerts" style="margin-top:6px">Community alert settings</button>
@@ -1989,6 +1991,7 @@ function accountPanel() {
   <div class="sec"><h3>Sign-in security</h3><p class="small" style="margin-top:0">Two-step verification: <b style="color:var(--ink)">${u.totp_enabled ? 'on' : 'off'}</b>${u.mfa_needed ? ' — required for your staff access' : ''}.</p>
     <button class="btn block" id="prSec">Two-step verification, password and devices</button></div>
   ${fleetMembership()}
+  <div class="sec"><button class="btn block" data-goto="howto">❓ How SafeRoute works</button></div>
   <div class="sec"><button class="btn block" id="prOut">Sign out</button></div>`;
 }
 async function loadAccount() { if (S.user && !S.alertPrefs) { await loadAlertPrefs(); if (S.tab === 'account') renderPanel(); } }
@@ -2026,6 +2029,38 @@ async function refreshAdm() {
 }
 function admLine() { return S.adm && S.adm.lga ? `📍 ${esc(S.adm.lga)} LGA, ${esc(S.adm.state)}` : ''; }
 setInterval(refreshAdm, 5000);
+
+// ---------------- How SafeRoute works (traveller help) ----------------
+const HOWTO = [
+  ['What the risk levels mean', `<p>The colour on the map and in the status card is SafeRoute's estimate for the place and time, not a guarantee.</p>
+    <ul>${['nothing significant reported nearby. Stay alert as usual.', 'something worth knowing. Check the reasons and travel with care.', 'recent serious reports nearby or several risk factors together. Consider another route or time.', 'avoid if you can. If you must go, tell your Safe Circle and use Safe Journey.'].map((t, i) => `<li><b style="color:${LEVELS[i].hex}">${LEVELS[i].name}</b> — ${t}</li>`).join('')}</ul>
+    <p>It is worked out from reports nearby, past verified incidents, distance to the nearest security post, the type of area, the time of day (higher after dark) and heavy rain. Tap the status card to see the reasons and the suggested action.</p>`],
+  ['What the report labels mean', `<ul>${['unverified', 'investigating', 'verified', 'resolved'].map(k => `<li><b>${STATUS[k].label}</b> — ${STATUS[k].help}.</li>`).join('')}</ul>
+    <p>Each warning also shows how much it has been checked (for example “single unconfirmed report” or “confirmed by several people nearby”). An unconfirmed crime report is only shown once enough people confirm it or a moderator checks it.</p>`],
+  ['Warnings while you travel', `<ul><li><b>Danger warning</b> speaks or sounds when you enter a higher-risk area. Turn it on in Safety Map.</li>
+    <li><b>Tourist Mode</b> warns earlier — useful when you don't know the area.</li>
+    <li><b>Driver mode</b> shows big, simple warnings for hazards ahead: accidents, floods, collapsed bridges, fallen trees, trucks blocking the road.</li>
+    <li>Keep the screen on or the app open; phones may pause apps in the background.</li></ul>`],
+  ['Safe Journey', `<ol><li>Open <b>Safe Journey</b>, choose where you are going and when you leave.</li><li>SafeRoute checks the route and suggests a safer time if one exists.</li>
+    <li>Start the journey. Your Safe Circle is told you've left, and alerted if you go far off the route or miss your arrival time.</li><li>Losing signal is not treated as an emergency; you get reminders to check in first.</li></ol>`],
+  ['Safe Circle', `<p>Add 2–5 people you trust (family, close friends). They get your SOS, journey alerts and live location when you share it, by app or SMS. Set a <b>cancel PIN</b> so a false alarm can be stopped, and optionally a <b>duress PIN</b> that looks like cancelling but keeps the alert active.</p>`],
+  ['Emergency SOS', `<ol><li>Press the red <b>SOS</b> button (it is on every screen), choose what is happening, then <b>press and hold</b> for 2 seconds.</li>
+    <li>A <b>5-second countdown</b> starts. Press <b>Cancel</b> if it was a mistake — nothing is sent.</li>
+    <li>Your Safe Circle and verified responders nearby get your location and a reference number. Your location updates every 15 seconds until you cancel.</li>
+    <li>You'll see when a responder acknowledges, is on the way, or is on the scene.</li></ol>
+    <p><b>Always call 112 as well if you can.</b> SafeRoute does not guarantee that emergency services have received or accepted an alert.</p>`],
+  ['Reporting and confirming', `<ul><li>Report only what you saw or know, and only when it is safe. Never stop on a dangerous road to take a photo.</li>
+    <li>Tap the exact spot on the map, choose the category and say whether it is still happening.</li><li>In <b>Community Watch</b> you can confirm, update or dispute reports near you. Confirmations from people close by count the most.</li>
+    <li>Accurate reports raise your trust score; false ones lower it, and deliberate false reports lead to suspension.</li></ul>`],
+  ['Alerts', `<p>Turn on notifications in <b>My Account</b>. In <b>Alerts</b> choose the areas (home, work, route) and categories you want, and how far around you. You can also get alerts for wherever you are.</p>`],
+  ['Your privacy', `<ul><li>Your live location is shared only during an SOS, a Safe Journey or when you share it, and stops when you end it.</li>
+    <li>Location data is removed from photos you upload. Your name is not shown on public reports.</li>
+    <li>In <b>My Account</b> you can download your data or delete your account at any time (Nigeria Data Protection Act 2023).</li></ul>`]
+];
+function howtoPanel() {
+  return `<div class="sec">${HOWTO.map(([t, h], i) => `<details class="howto"${i === 0 ? ' open' : ''}><summary>${t}</summary><div class="small" style="color:var(--ink)">${h}</div></details>`).join('')}</div>
+    <div class="sec small">In an emergency always call <a href="tel:112">112</a>.</div>`;
+}
 
 // ---------------- start ----------------
 load();

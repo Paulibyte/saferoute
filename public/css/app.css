@@ -299,3 +299,12 @@ ul.ready li.ok{opacity:.8}
   header{flex-wrap:nowrap}
   .sosbig{width:150px;height:150px}
 }
+
+details.howto{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:0 12px;margin-bottom:8px}
+details.howto summary{cursor:pointer;font-weight:700;padding:11px 0;list-style:none;color:var(--ink)}
+details.howto summary::-webkit-details-marker{display:none}
+details.howto summary::after{content:'+';float:right;color:var(--mute)}
+details.howto[open] summary::after{content:'−'}
+details.howto ul,details.howto ol{padding-left:18px;margin:4px 0 8px}
+details.howto li{margin:4px 0}
+details.howto p{margin:4px 0 8px}

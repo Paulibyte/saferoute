@@ -20,11 +20,12 @@ const MODULES = [
   ['sos', '🆘', 'SOS Command Centre', () => D.me.user.security || D.me.user.admin],
   ['intel', '🧠', 'Security Intelligence', () => true],
   ['verify', '✅', 'Report Verification', () => true],
-  ['agencies', '🏛️', 'Agency Management', () => D.me.user.admin],
+  ['agencies', '🏛️', 'Agency Management', () => D.me.user.admin || (D.me.user.org_role === 'supervisor' && !!D.me.user.org)],
   ['facilities', '🏥', 'Emergency Facilities', () => true],
   ['users', '👥', 'User Management', () => D.me.user.admin],
   ['analytics', '📊', 'Analytics', () => true],
-  ['config', '⚙️', 'System Configuration', () => D.me.user.admin]
+  ['config', '⚙️', 'System Configuration', () => D.me.user.admin],
+  ['guide', '📘', 'Staff guide', () => true]
 ];
 
 // ---------------- api ----------------
@@ -384,6 +385,7 @@ async function reportDrawer(id) {
 
 // ---------------- 6. Agency management ----------------
 async function vAgencies(v) {
+  if (!D.me.user.admin) { v.innerHTML = `<h1>${esc(D.me.user.org.name)} · officers</h1><p class="sub">As a supervisor you verify officers who register under your agency. Confirm each person's identity with your command before pressing Verify.</p><div id="aDetail"></div>`; return officers(D.me.user.org); }
   const orgs = D.orgs = await api('/api/dash/orgs');
   v.innerHTML = `<div class="row between"><div><h1>Agency Management</h1><p class="sub">Participating security organisations, their jurisdictions and officers. Officers choose their agency when registering; supervisors can verify their own officers.</p></div><button class="btn primary" id="aNew">➕ Add agency</button></div>
     <div class="card"><table><thead><tr><th>Agency</th><th>Type</th><th>Jurisdiction</th><th class="n">Officers</th><th class="n">Awaiting</th><th>Listed</th><th></th></tr></thead><tbody>
@@ -606,7 +608,23 @@ async function vConfig(v) {
 }
 
 // ---------------- render ----------------
-const VIEWS = { overview: vOverview, live: vLive, sos: vSos, intel: vIntel, verify: vVerify, agencies: vAgencies, facilities: vFacilities, users: vUsers, analytics: vAnalytics, config: vConfig };
+// ---------------- staff guide ----------------
+function guideRoles() { const u = D.me.user, r = new Set(['all']); if (u.moderator) r.add('mod'); if (u.security) r.add('security'); if (u.org_role === 'supervisor') r.add('supervisor'); if (u.admin) ['mod', 'security', 'admin', 'supervisor'].forEach(x => r.add(x)); return r; }
+function vGuide(v) {
+  const roles = guideRoles(), all = (window.SR_STAFF_GUIDE || []).filter(g => g.roles.some(r => roles.has(r)));
+  const open = id => { const g = all.find(x => x.id === id) || all[0]; D.guideId = g.id;
+    $$('#gToc button').forEach(b => b.classList.toggle('on', b.dataset.g === g.id));
+    $('#gBody').innerHTML = `<h1 style="margin-top:0">${esc(g.title)}</h1>${g.html}${g.go && MODULES.find(m => m[0] === g.go && m[3]()) ? `<p style="margin-top:16px"><button class="btn primary" data-gogo="${g.go}">Open ${esc(MODULES.find(m => m[0] === g.go)[2])} →</button></p>` : ''}`;
+    $$('[data-gogo]').forEach(b => b.onclick = () => { D.mod = b.dataset.gogo; location.hash = D.mod; renderNav(); render(); });
+    $('#gBody').scrollTop = 0; };
+  v.innerHTML = `<h1>Staff guide</h1><p class="sub">How to run SafeRoute day to day. You see the sections for your role.</p>
+    <div class="guide"><div class="card"><input type="text" id="gQ" placeholder="Search the guide" style="width:100%;margin-bottom:8px"><div id="gToc">${all.map(g => `<button data-g="${g.id}">${esc(g.title)}</button>`).join('')}</div></div>
+    <div class="card gbody" id="gBody"></div></div>`;
+  $$('#gToc button').forEach(b => b.onclick = () => open(b.dataset.g));
+  $('#gQ').oninput = e => { const q = e.target.value.trim().toLowerCase(); $$('#gToc button').forEach(b => { const g = all.find(x => x.id === b.dataset.g); b.hidden = !!q && !(g.title + ' ' + g.html.replace(/<[^>]+>/g, ' ')).toLowerCase().includes(q); }); const first = $$('#gToc button').find(b => !b.hidden); if (q && first) open(first.dataset.g); };
+  open(D.guideId);
+}
+const VIEWS = { guide: vGuide, overview: vOverview, live: vLive, sos: vSos, intel: vIntel, verify: vVerify, agencies: vAgencies, facilities: vFacilities, users: vUsers, analytics: vAnalytics, config: vConfig };
 async function render() {
   D.timers.forEach(clearInterval); D.timers = []; D.liveLayer = null; D.sosLayer = null;
   $('#drawer').hidden = true;
