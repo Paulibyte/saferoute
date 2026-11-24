@@ -103,6 +103,22 @@ Every figure is split into three layers that are never added together as "crime 
 
 Boundaries: Nigeria LGA boundaries 2022 from GRID3 / geoBoundaries (CC BY 4.0), bundled in `shared/ng-admin.json`. Community names come from OpenStreetMap Nominatim (© OpenStreetMap contributors), looked up at most once a second.
 
+## Android app (version 5)
+
+The Android app in `android-app/` is a Capacitor shell that opens https://saferoute.jobtins.com and adds what a website can't do:
+
+- **GPS with the screen off** during warnings, Safe Journey and SOS (Android shows a "SafeRoute is watching your route" notification while it runs). Background updates go through a per-device token (`/api/beacon`) and native HTTP so Android doesn't throttle them.
+- **App notifications** through Firebase Cloud Messaging (SOS and journey alerts use a high-priority "Emergency alerts" channel).
+- Android back button, notification taps that open the right screen, app icon and splash screen, and an offline page with a Call 112 button.
+
+Updates to the website reach the app straight away; the APK only needs rebuilding when `android-app/` changes.
+
+**Build:** GitHub builds it (`.github/workflows/android.yml`) whenever `android-app/` changes, on tags like `android-v1.0`, or from Actions → Build Android app → Run workflow. The APK appears under the run's **Artifacts**.
+
+**Secrets** (GitHub → Settings → Secrets and variables → Actions): `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` for a signed release APK + Play Store bundle; `GOOGLE_SERVICES_JSON` (base64) for notifications. Without the signing secrets you get a debug APK.
+
+**Server:** set `FCM_SERVICE_ACCOUNT` in `.env` to the Firebase service-account file. Put the APK at `data/downloads/saferoute.apk` to offer it at `/download/saferoute.apk` (Android browser users see a download button in My Account).
+
 ## Run it on your computer (Windows PowerShell)
 
 ```powershell

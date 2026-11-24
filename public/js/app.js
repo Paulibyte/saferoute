@@ -9,6 +9,7 @@ const fmtDur = s => { const m = Math.round(s / 60); return m < 60 ? m + ' min' :
 const ago = ms => { const m = (Date.now() - ms) / 60000; return m < 1 ? 'just now' : m < 60 ? Math.round(m) + ' min ago' : m < 2880 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago'; };
 const clock = h => { h = ((h % 24) + 24) % 24; return String(Math.floor(h)).padStart(2, '0') + ':' + String(Math.round((h % 1) * 60) % 60).padStart(2, '0'); };
 const R = window.SafeRisk;
+const NATIVE = window.SRNative || { isNative: false };
 const { km, nearest, LEVELS, SECURITY_CATS, SETTLE_LABEL, timeLabel } = R;
 
 const CAT = {
@@ -84,6 +85,7 @@ async function load() {
       if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(.1));
     }
     if (S.user && S.user.id !== prevUser) { loadCircle(); loadMySos(); loadJourney(); flushQueue(); if (S.user.mfa_needed) setTimeout(() => mfaSetup(true), 600); }
+    if (NATIVE.isNative && S.user && S.user.id !== prevUser) nativePush(false);
   } catch (e) { S.stale = S.stale || (S.data.generated_at || 1); mergePacks(); showOffline(); }
   if (firstLoad) handleUrl();
   firstLoad = false;
@@ -350,26 +352,31 @@ function startGps(silent) {
   stopTest(); stopGps();
   S.mode = 'gps'; S.follow = true; S.lastLevel = 0;
   if (!silent) toast('Finding your location…');
-  watchId = navigator.geolocation.watchPosition(p => {
+  const onFix = c => {
     const first = !S.pos || S.mode !== 'gps';
     S.mode = 'gps';
-    S.pos = [p.coords.latitude, p.coords.longitude];
-    S.speed = p.coords.speed != null ? p.coords.speed * 3.6 : S.speed;
-    if (p.coords.heading != null && !isNaN(p.coords.heading)) S.heading = p.coords.heading;
+    S.pos = [c.latitude, c.longitude];
+    S.speed = c.speed != null ? c.speed * 3.6 : S.speed;
+    if (c.heading != null && !isNaN(c.heading)) S.heading = c.heading;
+    if (document.hidden) { sendLocation(); update(); return; } // screen off (Android app): keep warnings, journeys and SOS going; skip map drawing
     if (accCircle) map.removeLayer(accCircle);
-    accCircle = L.circle(S.pos, { radius: p.coords.accuracy, color: '#3b82f6', weight: 1, fillOpacity: .08, interactive: false }).addTo(map);
+    accCircle = L.circle(S.pos, { radius: c.accuracy, color: '#3b82f6', weight: 1, fillOpacity: .08, interactive: false }).addTo(map);
     if (first || map.getZoom() < 12) map.setView(S.pos, 14);
     refreshWeather(); sendLocation(); update();
-  }, err => {
+  };
+  const onErr = (err, openSettings) => {
     if (S.mode === 'gps') S.mode = 'none'; renderPanel();
+    if (err.code === 1 && openSettings) { modal(`<h2>Location is off for SafeRoute</h2><p>SafeRoute needs your location to warn you about danger nearby and to keep your Safe Circle updated during journeys and SOS.</p><div class="row" style="margin-top:12px;justify-content:space-between"><button class="btn" data-close>Not now</button><button class="btn primary" id="locSet">Open settings</button></div>`); $('#locSet').onclick = () => { closeModal(); openSettings(); }; return; }
     toast(err.code === 1 ? 'Location permission was denied. Allow location for this site in your browser settings.' : 'Could not get your location. Move to open sky and try again.', 5000);
-  }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
+  };
+  if (NATIVE.isNative) { watchId = 'native'; NATIVE.startLocation(onFix, onErr); NATIVE.prepareBeacon(); }
+  else watchId = navigator.geolocation.watchPosition(p => onFix(p.coords), onErr, { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 });
   if ('wakeLock' in navigator) navigator.wakeLock.request('screen').then(l => { wakeLock = l; }).catch(() => {});
-  if (!silent && 'Notification' in window && Notification.permission === 'default') try { Notification.requestPermission(); } catch (e) {}
+  if (!silent && !NATIVE.isNative && 'Notification' in window && Notification.permission === 'default') try { Notification.requestPermission(); } catch (e) {}
   if (!silent) renderPanel();
 }
 function stopGps() {
-  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  if (watchId === 'native') NATIVE.stopLocation(); else if (watchId != null) navigator.geolocation.clearWatch(watchId);
   watchId = null; if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   if (accCircle) { map.removeLayer(accCircle); accCircle = null; }
   if (S.mode === 'gps') S.mode = 'none';
@@ -382,7 +389,8 @@ function sendLocation(force) {
   const every = S.sos ? 15000 : 30000;
   if (!force && Date.now() - lastSent < every) return;
   lastSent = Date.now();
-  api('/api/location', { method: 'POST', body: { lat: S.pos[0], lng: S.pos[1], speed: S.speed } }).then(r => {
+  const body = { lat: S.pos[0], lng: S.pos[1], speed: S.speed };
+  (NATIVE.isNative && document.hidden ? NATIVE.sendBeacon(body) : api('/api/location', { method: 'POST', body })).then(r => {
     if (r.journey && r.journey.arrived) { toast('You have arrived — your Safe Circle has been told', 5000); loadJourney(); }
     else if (r.journey && r.journey.off_route && S.journeyActive && !S.journeyActive.off_route) loadJourney();
   }).catch(() => {});
@@ -1104,10 +1112,22 @@ function bindPanel() {
 // ---------------- push notifications ----------------
 function b64ToU8(b) { const p = '='.repeat((4 - b.length % 4) % 4); const r = atob((b + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); }
 async function checkPush() {
+  if (NATIVE.isNative) return nativePush(false);
   try { const reg = await navigator.serviceWorker.ready; const sub = await reg.pushManager.getSubscription(); S.pushOn = !!sub; if (sub && S.user) api('/api/push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } }).catch(() => {}); } catch (e) { S.pushOn = false; }
+}
+async function nativePush(ask) {
+  if (!S.data.fcm) { S.pushOn = false; if (ask) toast('App notifications are not set up on the server yet. Your alerts still appear in the Alerts section.', 6000); return; }
+  const st = await NATIVE.enablePush({ ask,
+    onToken: t => { S.fcmToken = t; if (S.user) api('/api/push/fcm', { method: 'POST', body: { token: t }, quiet: true }).catch(() => {}); },
+    onTap: d => { if (d.url) openUrl(d.url); },
+    onReceive: n => { toast((n.title ? n.title + ' — ' : '') + (n.body || ''), 6000); if (S.user) { loadInbox(); load(); } } });
+  S.pushOn = st === 'granted';
+  if (S.fcmToken && S.user) api('/api/push/fcm', { method: 'POST', body: { token: S.fcmToken }, quiet: true }).catch(() => {});
+  if (ask) { if (st === 'granted') toast('Notifications are on for this phone'); else if (st === 'unavailable') toast('This build of the app cannot receive notifications. Install the latest version.', 6000); else toast('Notifications are blocked. Allow them for SafeRoute in Android Settings → Apps.', 6000); renderPanel(); }
 }
 async function enablePush() {
   if (!S.user) return authModal('Sign in first');
+  if (NATIVE.isNative) return nativePush(true);
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return toast('This browser cannot receive notifications. On iPhone, add the app to your Home Screen first.', 6000);
   try {
     const perm = await Notification.requestPermission();
@@ -1230,7 +1250,7 @@ const _oldAccount = () => {
   modal(`<h2>${esc(u.name)}</h2><p>${esc(u.email)}<br>Role: <b>${esc(u.role)}</b>${u.security_status ? ` · Security status: <b>${esc(u.security_status)}</b>` : ''}${u.trusted ? ' · ⭐ Trusted contributor' : ''}</p>
     ${u.security_status === 'pending' ? '<p class="small">An admin will verify your security account. You will then see the Security tab.</p>' : ''}
     <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>Close</button><button class="btn" id="bLogout">Sign out</button></div>`);
-  $('#bLogout').onclick = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); S.user = null; S.sos = null; S.circle = []; S.myShare = null; S.tab = 'map'; closeModal(); toast('Signed out'); load(); };
+  $('#bLogout').onclick = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); if (NATIVE.forgetBeacon) NATIVE.forgetBeacon(); S.user = null; S.sos = null; S.circle = []; S.myShare = null; S.tab = 'map'; closeModal(); toast('Signed out'); load(); };
 };
 $('#btnLayer').onclick = () => { S.sat = !S.sat; store.set('sat', S.sat); setBase(); };
 $('#btnFollow').onclick = () => { if (!S.pos) return toast('Location is off'); S.follow = true; map.setView(S.pos, 15); };
@@ -1361,7 +1381,7 @@ async function accountModal() {
   on('pwF', async e => { e.preventDefault(); try { await api('/api/auth/password', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) }); toast('Password changed'); closeModal(); } catch (x) { $('#pwE').textContent = x.message; } });
   $$('[data-sess]').forEach(b => b.onclick = async () => { await api('/api/sessions/' + b.dataset.sess, { method: 'DELETE' }).catch(() => {}); accountModal(); });
   on('sessAll', async () => { await api('/api/sessions/others', { method: 'POST' }).catch(() => {}); toast('Other devices signed out'); accountModal(); });
-  on('bLogout', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); S.user = null; S.sos = null; S.circle = []; S.myShare = null; S.journeyActive = null; S.tab = 'map'; closeModal(); toast('Signed out'); load(); });
+  on('bLogout', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); if (NATIVE.forgetBeacon) NATIVE.forgetBeacon(); S.user = null; S.sos = null; S.circle = []; S.myShare = null; S.journeyActive = null; S.tab = 'map'; closeModal(); toast('Signed out'); load(); });
 }
 function deviceName(ua) {
   ua = ua || '';
@@ -1969,6 +1989,7 @@ function accountPanel() {
   const u = S.user;
   if (!u) return `<div class="sec"><p>Sign in to use Safe Circle, SOS, journey check-in, alerts and reporting.</p><button class="btn primary block" id="aSign">Sign in or create account</button></div>
     <div class="sec small">You can still use the Safety Map, Journey Planner and Emergency Services without an account.</div>
+    ${apkPromo()}
     <div class="sec"><button class="btn block" data-goto="howto">❓ How SafeRoute works</button></div>`;
   const p = S.alertPrefs;
   return `<div class="sec"><h3>Profile</h3><form id="profF"><label class="f">Name</label><input type="text" name="name" maxlength="80" value="${esc(u.name)}" required>
@@ -1987,10 +2008,11 @@ function accountPanel() {
   <div class="sec"><h3>Privacy</h3>
     ${p ? `<div class="toggle"><div>Use my location for “alerts where I am”<small>Approximate location, kept for 6 hours, only while SafeRoute is open</small></div>${sw('prCur', p.current)}</div>` : ''}
     <p class="small">Your live location is shared only when you start an SOS, a journey or location sharing, and stops when you end it. Report photos have location data removed. Under the Nigeria Data Protection Act 2023 you can download or delete your data.</p>
-    <div class="grid2"><a class="btn block" href="/api/me/export" download>⬇ Download my data</a><button class="btn block" id="prDel">Delete my account</button></div></div>
+    <div class="grid2">${NATIVE.isNative ? '<button class="btn block" id="prExp">⬇ Download my data</button>' : '<a class="btn block" href="/api/me/export" download>⬇ Download my data</a>'}<button class="btn block" id="prDel">Delete my account</button></div></div>
   <div class="sec"><h3>Sign-in security</h3><p class="small" style="margin-top:0">Two-step verification: <b style="color:var(--ink)">${u.totp_enabled ? 'on' : 'off'}</b>${u.mfa_needed ? ' — required for your staff access' : ''}.</p>
     <button class="btn block" id="prSec">Two-step verification, password and devices</button></div>
   ${fleetMembership()}
+  ${apkPromo()}
   <div class="sec"><button class="btn block" data-goto="howto">❓ How SafeRoute works</button></div>
   <div class="sec"><button class="btn block" id="prOut">Sign out</button></div>`;
 }
@@ -2012,7 +2034,8 @@ function bindV4(P) {
   on('profF', 'submit', async e => { e.preventDefault(); try { await api('/api/me', { method: 'PUT', body: Object.fromEntries(new FormData(e.target)) }); toast('Profile saved'); load(); } catch (x) { toast(x.message); } });
   on('prCur', 'change', async e => { try { const d = await api('/api/alerts/prefs', { method: 'PUT', body: { ...S.alertPrefs, current: e.target.checked } }); S.alertPrefs = d.prefs; toast(e.target.checked ? 'On' : 'Off — your last location has been deleted'); } catch (x) { toast(x.message); } });
   on('prSec', 'click', accountModal);
-  on('prOut', 'click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); S.user = null; S.sos = null; S.circle = []; S.myShare = null; S.journeyActive = null; S.alertPrefs = null; S.inbox = null; S.tab = 'map'; toast('Signed out'); load(); });
+  on('prExp', 'click', () => modal(`<h2>Download your data</h2><p>The Android app can't save files directly. Open SafeRoute in your phone's browser (Chrome), sign in, and use My Account → Download my data.</p><div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn" data-close>OK</button></div>`));
+  on('prOut', 'click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); if (NATIVE.forgetBeacon) NATIVE.forgetBeacon(); S.user = null; S.sos = null; S.circle = []; S.myShare = null; S.journeyActive = null; S.alertPrefs = null; S.inbox = null; S.tab = 'map'; toast('Signed out'); load(); });
   on('prDel', 'click', () => {
     modal(`<h2>Delete your account</h2><p>This permanently deletes your account, Safe Circle, journeys, alert settings and devices. Reports you sent stay on the map without your name, because others rely on them.</p>
       <form id="delF"><label class="f">Type your password to confirm</label><input type="password" name="password" required autocomplete="current-password"><div class="err" id="delE"></div>
@@ -2062,6 +2085,23 @@ function howtoPanel() {
     <div class="sec small">In an emergency always call <a href="tel:112">112</a>.</div>`;
 }
 
+// ---------------- Android app: promo on the website, back button, resume ----------------
+function apkPromo() {
+  if (NATIVE.isNative || !S.data.android_apk || !/Android/i.test(navigator.userAgent)) return '';
+  return `<div class="sec"><h3>Get the Android app</h3><p class="small" style="margin-top:0">Keeps warnings, journeys and SOS location running with the screen off, and gets alerts even when SafeRoute is closed.</p>
+    <a class="btn primary block" href="/download/saferoute.apk">⬇ Download SafeRoute for Android</a>
+    <p class="small">After downloading, open the file and allow your browser to install apps if Android asks.</p></div>`;
+}
+if (NATIVE.isNative) {
+  NATIVE.onBack = () => {
+    if ($('#modal').classList.contains('show')) { closeModal(); return true; }
+    if (S.driver) { setDriver(false); return true; }
+    if (S.tab !== 'map') { setTab('map'); return true; }
+    return false;
+  };
+  NATIVE.onResume = () => { load(); if (S.user) loadInbox(); };
+}
+
 // ---------------- start ----------------
 load();
 setInterval(() => { if (!document.hidden) load(); }, 30000);
@@ -2070,5 +2110,9 @@ setInterval(() => { if (!document.hidden && isSecurity()) loadSos(); }, 10000);
 setInterval(() => { if (S.sos) loadMySos(); }, 10000);
 window.addEventListener('online', () => { load(); flushQueue(); });
 window.addEventListener('offline', showOffline);
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => checkPush()).catch(() => {});
+if (NATIVE.isNative) {
+  // The Android app talks to the network directly (so its native bridge is always present); no service worker there.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+  NATIVE.ready.then(() => checkPush());
+} else if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').then(() => checkPush()).catch(() => {});
 })();

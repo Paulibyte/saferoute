@@ -1,0 +1,43 @@
+{
+  "appId": "com.jobtins.saferoute",
+  "appName": "SafeRoute Naija",
+  "webDir": "www",
+  "server": {
+    "url": "https://saferoute.jobtins.com",
+    "cleartext": false,
+    "errorPath": "offline.html",
+    "allowNavigation": [
+      "saferoute.jobtins.com"
+    ]
+  },
+  "android": {
+    "appendUserAgent": "SafeRouteAndroid/1",
+    "backgroundColor": "#0d1412",
+    "useLegacyBridge": true,
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#0d1412",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_INSIDE"
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    },
+    "CapacitorHttp": {
+      "enabled": false
+    },
+    "SystemBars": {
+      "insetsHandling": "native",
+      "style": "DARK",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

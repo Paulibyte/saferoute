@@ -9,6 +9,7 @@ const cookieParser = require('cookie-parser');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const webpush = require('web-push');
+const Fcm = require('./lib/fcm');
 
 const { db, DATA_DIR, secret, randomToken } = require('./db');
 const Risk = require('./shared/risk');
@@ -27,7 +28,9 @@ let lastBase = '';
 const baseUrl = req => (process.env.PUBLIC_URL || (req ? `${req.protocol}://${req.get('host')}` : lastBase)).replace(/\/$/, '');
 const VAPID = JSON.parse(secret('vapid', () => JSON.stringify(webpush.generateVAPIDKeys())));
 webpush.setVapidDetails('mailto:' + (process.env.ADMIN_EMAIL || 'admin@example.com'), VAPID.publicKey, VAPID.privateKey);
-const Jobs = require('./lib/jobs')({ db, webpush, notify, baseUrl: () => baseUrl(null) });
+const Jobs = require('./lib/jobs')({ db, webpush, fcm: Fcm, notify, baseUrl: () => baseUrl(null) });
+// Android app download (upload the APK to data/downloads/saferoute.apk on the server)
+const APK_FILE = path.join(DATA_DIR, 'downloads', 'saferoute.apk');
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -36,7 +39,7 @@ app.use('/api/twilio', express.urlencoded({ extended: false, limit: '20kb' }));
 app.use(express.json({ limit: '400kb' }));
 app.use(cookieParser());
 app.use((req, res, next) => { if (!lastBase) lastBase = `${req.protocol}://${req.get('host')}`; next(); });
-app.use(Sec.csrf(SECURE_COOKIE, ['/api/twilio/', '/api/notif/ack']));
+app.use(Sec.csrf(SECURE_COOKIE, ['/api/twilio/', '/api/notif/ack', '/api/beacon']));
 app.use('/api/', Sec.limit('api', 600, MIN));
 
 // ---------- helpers ----------
@@ -287,6 +290,7 @@ app.post('/api/auth/mfa', Sec.limit('mfa', 20, 15 * MIN), (req, res) => {
   res.json({ user: publicUser(u) });
 });
 app.post('/api/auth/logout', (req, res) => {
+  if (req.cookies.sr_session) { const ss = db.prepare(`SELECT user_id FROM sessions WHERE token=?`).get(req.cookies.sr_session); if (ss) db.prepare(`DELETE FROM beacons WHERE user_id=?`).run(ss.user_id); }
   if (req.cookies.sr_session) db.prepare(`DELETE FROM sessions WHERE token=?`).run(req.cookies.sr_session);
   res.clearCookie('sr_session'); res.json({ ok: true });
 });
@@ -294,6 +298,7 @@ app.post('/api/auth/password', signedIn, Sec.limit('pwchange', 10, H), (req, res
   if (!bcrypt.compareSync(String(req.body.current || ''), req.user.password_hash)) return fail(res, 403, 'Current password is not correct');
   const pw = Sec.passwordProblem(req.body.password, privileged({ ...req.user, role: req.user._real_role || req.user.role })); if (pw) return fail(res, 400, pw);
   db.prepare(`UPDATE users SET password_hash=?, password_changed_at=? WHERE id=?`).run(bcrypt.hashSync(String(req.body.password), 11), now(), req.user.id);
+  db.prepare(`DELETE FROM beacons WHERE user_id=?`).run(req.user.id);
   db.prepare(`DELETE FROM sessions WHERE user_id=? AND token!=?`).run(req.user.id, req.sessionToken);
   Sec.audit(req, 'password_changed', 'user', req.user.id);
   res.json({ ok: true });
@@ -381,7 +386,7 @@ app.get('/api/bootstrap', (req, res) => {
   const u = req.user;
   res.json({
     user: publicUser(u), types: typesObj(), settings: settingsObj(), places: placesAll(), zones: zonesAll(),
-    reports: reportsFor(u), history: history(), push_key: VAPID.publicKey, sms_enabled: notify.smsEnabled(), voice_enabled: notify.voiceEnabled(),
+    reports: reportsFor(u), history: history(), push_key: VAPID.publicKey, fcm: Fcm.enabled, android_apk: fs.existsSync(APK_FILE), sms_enabled: notify.smsEnabled(), voice_enabled: notify.voiceEnabled(),
     fleets: myFleets(u), unread: u ? db.prepare(`SELECT COUNT(*) n FROM user_alerts WHERE user_id=? AND read_at IS NULL`).get(u.id).n : 0,
     orgs: db.prepare(`SELECT id,name,type,state FROM organisations WHERE verified=1 ORDER BY name`).all(),
     generated_at: now(), server_time: now()
@@ -716,17 +721,41 @@ function distToRoute(p, route) {
   return best;
 }
 
-app.post('/api/location', signedIn, Sec.limit('loc', 240, H, r => 'u' + (r.user && r.user.id)), (req, res) => {
-  const p = coord(req.body.lat, req.body.lng); if (!p) return fail(res, 400, 'Location needed');
-  const speed = isFinite(+req.body.speed) ? +req.body.speed : null;
-  const shares = db.prepare(`SELECT * FROM shares WHERE user_id=? AND active=1`).all(req.user.id);
+function locationUpdate(user, body) {
+  const p = coord(body.lat, body.lng); if (!p) return null;
+  const speed = isFinite(+body.speed) ? +body.speed : null;
+  const shares = db.prepare(`SELECT * FROM shares WHERE user_id=? AND active=1`).all(user.id);
   shares.forEach(s => addPoint(s, p));
-  const sos = db.prepare(`SELECT id FROM sos WHERE user_id=? AND status!='closed'`).get(req.user.id);
+  const sos = db.prepare(`SELECT id FROM sos WHERE user_id=? AND status!='closed'`).get(user.id);
   if (sos) db.prepare(`UPDATE sos SET lat=?, lng=?, updated_at=? WHERE id=?`).run(p[0], p[1], now(), sos.id);
-  const jr = db.prepare(`SELECT * FROM journeys WHERE user_id=? AND status IN ('active','overdue','escalated')`).get(req.user.id);
+  const jr = db.prepare(`SELECT * FROM journeys WHERE user_id=? AND status IN ('active','overdue','escalated')`).get(user.id);
   let journey = null;
-  if (jr) journey = journeyLocation(jr, req.user, p, speed);
-  res.json({ shares: shares.length, sos: !!sos, journey });
+  if (jr) journey = journeyLocation(jr, user, p, speed);
+  return { shares: shares.length, sos: !!sos, journey };
+}
+app.post('/api/location', signedIn, Sec.limit('loc', 240, H, r => 'u' + (r.user && r.user.id)), (req, res) => {
+  const r = locationUpdate(req.user, req.body); if (!r) return fail(res, 400, 'Location needed');
+  res.json(r);
+});
+// Android app: location while the screen is off. A per-device token instead of the session cookie,
+// because Android throttles the WebView's own requests in the background.
+const beaconHash = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+app.post('/api/beacon/token', signedIn, Sec.limit('beacontok', 30, H, r => 'u' + (r.user && r.user.id)), (req, res) => {
+  const t = crypto.randomBytes(24).toString('base64url');
+  db.prepare(`DELETE FROM beacons WHERE user_id=? AND created_at<?`).run(req.user.id, now() - 30 * 864e5);
+  const n = db.prepare(`SELECT COUNT(*) n FROM beacons WHERE user_id=?`).get(req.user.id).n;
+  if (n >= 10) db.prepare(`DELETE FROM beacons WHERE id IN (SELECT id FROM beacons WHERE user_id=? ORDER BY COALESCE(last_used, created_at) LIMIT ?)`).run(req.user.id, n - 9);
+  db.prepare(`INSERT INTO beacons (user_id,hash,created_at) VALUES (?,?,?)`).run(req.user.id, beaconHash(t), now());
+  res.json({ token: t });
+});
+app.post('/api/beacon', Sec.limit('beacon', 240, H, r => 'b' + String(r.get('x-beacon') || '').slice(0, 12)), (req, res) => {
+  const b = db.prepare(`SELECT * FROM beacons WHERE hash=?`).get(beaconHash(req.get('x-beacon') || ''));
+  if (!b || b.created_at < now() - 30 * 864e5) return fail(res, 401, 'Beacon not valid');
+  const user = db.prepare(`SELECT * FROM users WHERE id=?`).get(b.user_id);
+  if (!user || user.banned) return fail(res, 401, 'Beacon not valid');
+  db.prepare(`UPDATE beacons SET last_used=? WHERE id=?`).run(now(), b.id);
+  const r = locationUpdate(user, req.body); if (!r) return fail(res, 400, 'Location needed');
+  res.json(r);
 });
 
 // ---- journeys ----
@@ -926,6 +955,13 @@ app.post('/api/push/subscribe', signedIn, (req, res) => {
   if (!s || !s.endpoint || !s.keys || !/^https:\/\//.test(s.endpoint)) return fail(res, 400, 'Invalid subscription');
   db.prepare(`INSERT INTO push_subs (user_id,endpoint,keys_json,created_at) VALUES (?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, keys_json=excluded.keys_json`)
     .run(req.user.id, clean(s.endpoint, 1000), JSON.stringify(s.keys), now());
+  res.json({ ok: true });
+});
+app.post('/api/push/fcm', signedIn, Sec.limit('fcm', 30, H, r => 'u' + (r.user && r.user.id)), (req, res) => {
+  const t = String(req.body.token || '');
+  if (!/^[\w:\-.]{20,4096}$/.test(t)) return fail(res, 400, 'Invalid device token');
+  db.prepare(`INSERT INTO push_subs (user_id,endpoint,keys_json,created_at) VALUES (?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id`)
+    .run(req.user.id, 'fcm:' + t, '{"fcm":true}', now());
   res.json({ ok: true });
 });
 app.post('/api/push/unsubscribe', signedIn, (req, res) => { db.prepare(`DELETE FROM push_subs WHERE endpoint=? AND user_id=?`).run(clean(req.body.endpoint, 1000), req.user.id); res.json({ ok: true }); });
@@ -1447,6 +1483,11 @@ require('./routes/dash')(app, { db, Sec, Risk, Geo, Jobs, need, fail, clean, coo
 app.get('/js/risk.js', (req, res) => res.sendFile(path.join(__dirname, 'shared', 'risk.js')));
 app.get('/sw.js', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(__dirname, 'public', 'sw.js')); });
 app.get('/t/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'track.html')));
+app.get('/download/saferoute.apk', (req, res) => {
+  if (!fs.existsSync(APK_FILE)) return res.status(404).send('The Android app is not available for download yet.');
+  res.set('Cache-Control', 'no-cache');
+  res.type('application/vnd.android.package-archive').download(APK_FILE, 'SafeRoute-Naija.apk');
+});
 app.get(['/admin', '/admin/'], (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', index: 'index.html' }));
 app.use('/api', (req, res) => fail(res, 404, 'Not found'));

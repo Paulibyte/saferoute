@@ -138,7 +138,10 @@ for (const [c, d] of [['address', 'TEXT'], ['notes', 'TEXT'], ['verified_by', 'I
 
 // ---------------- v4: State / LGA / community hierarchy, agency jurisdictions ----------------
 for (const t of ['reports', 'sos', 'places']) for (const [c, d] of [['state', 'TEXT'], ['lga', 'TEXT'], ['lga_id', 'INTEGER'], ['locality', 'TEXT']]) addCol(t, c, d);
-addCol('organisations', 'jurisdiction', 'TEXT');   // {"states":["Imo"],"lgas":[553]}
+addCol('organisations', 'jurisdiction', 'TEXT');
+// v5 (Android app): per-device location beacons for background updates
+db.exec(`CREATE TABLE IF NOT EXISTS beacons (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  hash TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, last_used INTEGER)`);   // {"states":["Imo"],"lgas":[553]}
 db.exec(`CREATE INDEX IF NOT EXISTS idx_reports_state ON reports(state, lga_id);
 CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);
 CREATE INDEX IF NOT EXISTS idx_sos_state ON sos(state, lga_id);

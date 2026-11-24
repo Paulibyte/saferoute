@@ -1,3 +1,8 @@
 node_modules/
 data/
 .env
+google-services.json
+*.p12
+*.jks
+*.keystore
+service-account*.json
